@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: MIT
+
+mainmenu "Tinycardia firmware"
+
+menu "Tinycardia ECG processing"
+
+config TINYCARDIA_ECG_THREAD_STACK_SIZE
+	int "ECG processing thread stack size in bytes"
+	default 2048
+	range 1024 8192
+	help
+	  Stack reserved for window standardization, R-peak detection, RR feature
+	  extraction, and the future inference callback.
+
+config TINYCARDIA_ECG_THREAD_PRIORITY
+	int "ECG processing thread priority"
+	default 5
+	range 0 15
+	help
+	  Preemptible Zephyr thread priority used for completed ECG windows.
+
+endmenu
+
+source "Kconfig.zephyr"

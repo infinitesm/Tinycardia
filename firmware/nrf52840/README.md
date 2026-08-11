@@ -49,6 +49,29 @@ power button is held continuously for three seconds. A short press wakes the
 device, but it returns to System OFF when the button is released. After a valid
 hold, the application initializes the MAX30003 and starts BLE advertising.
 
+## ECG processing pipeline
+
+The MAX30003 runs at 256 samples per second. The application collects exactly
+2,560 samples into a 10-second window, pauses capture while that window is
+prepared, then discards it and starts a new window from zero. Consecutive
+windows never overlap.
+
+Window preparation standardizes the ECG samples, detects R peaks using the same
+preprocessing as the model-training notebook, and produces these seven
+standardized RR features for the future inference input:
+
+- mean RR interval
+- SDNN
+- RMSSD
+- pNN50
+- pNN20
+- Poincare SD1
+- Poincare SD2
+
+The inference insertion point is `prepared_window_handler()` in `src/main.c`.
+Capture remains paused until that handler returns, so inference can safely read
+the prepared arrays without them being overwritten.
+
 ## Hardware mapping
 
 The MAX30003 uses SPI mode 0 at up to 4 MHz. Both INT1 and the power button are

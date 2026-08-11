@@ -31,10 +31,12 @@ LOG_MODULE_REGISTER(max30003, CONFIG_LOG_DEFAULT_LEVEL);
 
 #define MAX30003_STATUS_EINT    BIT(23)
 #define MAX30003_FIFO_ETAG_MASK GENMASK(5, 3)
-#define MAX30003_FIFO_ETAG_VALID 0
-#define MAX30003_FIFO_ETAG_FAST  1
-#define MAX30003_FIFO_ETAG_OVF   7
-#define MAX30003_FIFO_MAX_READS  33
+#define MAX30003_FIFO_ETAG_VALID      0
+#define MAX30003_FIFO_ETAG_FAST       1
+#define MAX30003_FIFO_ETAG_VALID_LAST 2
+#define MAX30003_FIFO_ETAG_FAST_LAST  3
+#define MAX30003_FIFO_ETAG_OVF        7
+#define MAX30003_FIFO_MAX_READS       33
 
 /* Values retained from the validated STM32 configuration. */
 #define MAX30003_CNFG_GEN_VALUE  0x081213
@@ -229,13 +231,16 @@ static void fifo_work_handler(struct k_work *work)
 			(void)max30003_write_register(MAX30003_REG_FIFO_RST, 0);
 			return;
 		}
-		if (etag != MAX30003_FIFO_ETAG_VALID &&
-		    etag != MAX30003_FIFO_ETAG_FAST) {
+		if (etag > MAX30003_FIFO_ETAG_FAST_LAST) {
 			return;
 		}
 
 		if (sample_callback != NULL) {
 			sample_callback(fifo_word, sample_callback_data);
+		}
+		if (etag == MAX30003_FIFO_ETAG_VALID_LAST ||
+		    etag == MAX30003_FIFO_ETAG_FAST_LAST) {
+			return;
 		}
 	}
 

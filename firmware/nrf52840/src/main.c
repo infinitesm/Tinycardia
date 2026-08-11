@@ -1,3 +1,4 @@
+#include "ecg_processor.h"
 #include "max30003.h"
 #include "power_control.h"
 
@@ -5,8 +6,11 @@
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>
+
+LOG_MODULE_REGISTER(tinycardia, CONFIG_LOG_DEFAULT_LEVEL);
 
 // BT advertising data
 static const struct bt_data ad[] = {
@@ -73,6 +77,19 @@ BT_CONN_CB_DEFINE(connection_callbacks) = {
 	.recycled = recycled,
 };
 
+static void prepared_window_handler(const struct ecg_prepared_window *window,
+				    void *user_data)
+{
+	ARG_UNUSED(user_data);
+
+	LOG_INF("ECG window prepared: %u samples, %u R peaks, RR features %s",
+		(unsigned int)window->sample_count,
+		(unsigned int)window->r_peak_count,
+		window->rr_features_valid ? "ready" : "insufficient R peaks");
+
+	/* Future inference consumes window->ecg_samples and window->rr_features here. */
+}
+
 int main(void)
 {
 	int err;
@@ -85,7 +102,13 @@ int main(void)
 
 	printk("Tinycardia v2 booted\n");
 
-	err = max30003_init(NULL, NULL);
+	err = ecg_processor_init(prepared_window_handler, NULL);
+	if (err < 0) {
+		printk("ECG processor initialization failed (err %d)\n", err);
+		return 0;
+	}
+
+	err = max30003_init(ecg_processor_sample_handler, NULL);
 	if (err < 0) {
 		printk("MAX30003 initialization failed (err %d)\n", err);
 		return 0;

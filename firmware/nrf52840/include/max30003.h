@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-typedef void (*max30003_sample_handler_t)(uint32_t raw_sample, void *user_data);
+typedef void (*max30003_sample_handler_t)(uint32_t raw_word, void *user_data);
 
 /* Initializes SPI, INT1, and the ECG acquisition registers. */
 int max30003_init(max30003_sample_handler_t sample_handler, void *user_data);
