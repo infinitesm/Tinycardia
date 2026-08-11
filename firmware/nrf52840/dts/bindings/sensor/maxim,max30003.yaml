@@ -1,0 +1,11 @@
+description: Maxim MAX30003 single-channel ECG analog front end
+
+compatible: "maxim,max30003"
+
+include: spi-device.yaml
+
+properties:
+  int-gpios:
+    type: phandle-array
+    required: true
+    description: Active-low INT1 interrupt signal

@@ -1,0 +1,52 @@
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/pinctrl/nrf-pinctrl.h>
+
+/ {
+	aliases {
+		power-button = &power_button;
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+
+		power_button: power_button {
+			gpios = <&gpio0 6 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Power button";
+		};
+	};
+};
+
+/* P1.00 is used by MAX30003 INT1, not the board's default I2C0 SDA. */
+&i2c0 {
+	status = "disabled";
+};
+
+&spi2_default {
+	group1 {
+		psels = <NRF_PSEL(SPIM_SCK, 0, 22)>,
+			<NRF_PSEL(SPIM_MOSI, 0, 20)>,
+			<NRF_PSEL(SPIM_MISO, 0, 17)>;
+	};
+};
+
+&spi2_sleep {
+	group1 {
+		psels = <NRF_PSEL(SPIM_SCK, 0, 22)>,
+			<NRF_PSEL(SPIM_MOSI, 0, 20)>,
+			<NRF_PSEL(SPIM_MISO, 0, 17)>;
+		low-power-enable;
+	};
+};
+
+&spi2 {
+	compatible = "nordic,nrf-spim";
+	status = "okay";
+	cs-gpios = <&gpio0 24 GPIO_ACTIVE_LOW>;
+
+	max30003: max30003@0 {
+		compatible = "maxim,max30003";
+		reg = <0>; // spi chip select index
+		spi-max-frequency = <4000000>; // max of 4 MHz
+		int-gpios = <&gpio1 0 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>; // P1.00
+	};
+};

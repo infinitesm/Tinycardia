@@ -2,7 +2,12 @@
 
 Lightweight ML cardiac emergency detection designed for embedded systems.
 
-Tinycardia detects atrial fibrillation (AFib) from ECG signals using machine learning models small enough to run on STM32 microcontrllers. It combines deep learning on raw ECG waveforms with extracted RR interval features for robust arrhythmia detection. The project aims to bring real-time, low-power cardiac monitoring to wearable and portable devices.
+Tinycardia detects atrial fibrillation (AFib) from ECG signals using machine learning models small enough to run on microcontrollers. It combines deep learning on raw ECG waveforms with extracted RR interval features for robust arrhythmia detection. The project aims to bring real-time, low-power cardiac monitoring to wearable and portable devices.
+
+## Firmware
+
+- [`firmware/nrf52840`](firmware/nrf52840) — Tinycardia v2 firmware for the Nordic nRF52840 using nRF Connect SDK/Zephyr
+- [`firmware/stm32`](firmware/stm32) — preserved legacy STM32 firmware
 
 ## Features
 - Classifies sinus rhythms vs. atrial fibrillation
