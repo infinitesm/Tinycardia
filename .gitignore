@@ -1,0 +1,8 @@
+# Zephyr / west build output
+build/
+firmware/nrf52840/build/
+
+# Python tooling
+__pycache__/
+*.py[cod]
+.venv/

@@ -1,0 +1,6 @@
+{
+  "recommendations": [
+    "nordic-semiconductor.nrf-connect",
+    "ms-vscode.cpptools"
+  ]
+}
