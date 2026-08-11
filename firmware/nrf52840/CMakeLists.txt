@@ -5,6 +5,7 @@ project(tinycardia_nrf52840)
 
 target_sources(app PRIVATE
   src/main.c
+  src/ecg_processing.c
   src/ecg_processor.c
   src/max30003.c
   src/power_control.c

@@ -6,7 +6,7 @@ legacy STM32 firmware in `../stm32`.
 
 ## Prerequisites
 
-- nRF Connect SDK installed and activated
+- nRF Connect SDK v3.4.0 installed and activated
 - A Pro Micro nRF52840-compatible board using the UF2 bootloader
 - `west` available in the activated SDK environment
 
@@ -71,6 +71,11 @@ standardized RR features for the future inference input:
 The inference insertion point is `prepared_window_handler()` in `src/main.c`.
 Capture remains paused until that handler returns, so inference can safely read
 the prepared arrays without them being overwritten.
+
+## Verification
+
+See [`TESTING.md`](TESTING.md) for native ztest/Twister commands, automated coverage,
+golden-data limits, CI behavior, and the physical bench checklist.
 
 ## Hardware mapping
 

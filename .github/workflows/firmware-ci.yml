@@ -1,0 +1,73 @@
+name: Firmware CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-ci-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-nrf52840:
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/nrfconnect/sdk-nrf-toolchain:v3.4.0
+    defaults:
+      run:
+        shell: bash
+    env:
+      NCS_VERSION: v3.4.0
+      BOARD_TARGET: promicro_nrf52840/nrf52840/uf2
+
+    steps:
+      - name: Check out Tinycardia
+        uses: actions/checkout@v4
+
+      - name: Initialize nRF Connect SDK
+        run: west init -m https://github.com/nrfconnect/sdk-nrf --mr "${NCS_VERSION}" ncs
+
+      - name: Fetch SDK modules
+        working-directory: ncs
+        run: west update --narrow -o=--depth=1
+
+      - name: Run hardware-independent tests
+        working-directory: ncs
+        run: |
+          west twister \
+            -p native_sim/native/64 \
+            -T ../firmware/nrf52840/tests \
+            -O ../firmware/nrf52840/twister-out \
+            --inline-logs \
+            --force-color
+
+      - name: Build nRF52840 UF2 firmware
+        working-directory: ncs
+        run: |
+          west build --sysbuild -p always \
+            -b "${BOARD_TARGET}" \
+            -d ../firmware/nrf52840/build-ci \
+            ../firmware/nrf52840
+
+      - name: Upload verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tinycardia-test-reports
+          if-no-files-found: warn
+          path: |
+            firmware/nrf52840/twister-out/*.json
+            firmware/nrf52840/twister-out/*.xml
+            firmware/nrf52840/twister-out/**/build.log
+            firmware/nrf52840/twister-out/**/handler.log
+
+      - name: Upload UF2 firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: tinycardia-nrf52840-uf2
+          if-no-files-found: error
+          path: firmware/nrf52840/build-ci/nrf52840/zephyr/zephyr.uf2
