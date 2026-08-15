@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Check out Tinycardia
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install build dependencies
         run: apt-get update && apt-get install -y make

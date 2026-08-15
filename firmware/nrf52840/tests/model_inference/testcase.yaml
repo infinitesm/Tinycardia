@@ -1,0 +1,11 @@
+tests:
+  tinycardia.model_inference:
+    platform_allow:
+      - native_sim/native/64
+    integration_platforms:
+      - native_sim/native/64
+    timeout: 120
+    tags:
+      - inference
+      - model
+      - unit

@@ -36,7 +36,9 @@ struct ecg_prepared_window {
 	size_t sample_count;
 	size_t r_peak_count;
 	bool rr_features_valid;
+	uint32_t start_timestamp_ms;
 	uint32_t end_timestamp_ms;
+	uint32_t preparation_time_us;
 };
 
 typedef void (*ecg_window_handler_t)(const struct ecg_prepared_window *window, void *user_data);
