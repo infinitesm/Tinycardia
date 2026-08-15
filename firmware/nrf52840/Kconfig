@@ -2,6 +2,65 @@
 
 mainmenu "Tinycardia firmware"
 
+menu "Tinycardia power control"
+
+config TINYCARDIA_POWER_BUTTON_DEBUG
+	bool "Log power-button and power-state transitions"
+	help
+	  Bench mode for diagnosing the active-low power button. Startup still
+	  requires a valid three-second hold and the application runs normally.
+	  While the system is ON, the firmware logs press/release transitions,
+	  held time, and each accepted power-off hold. An accepted runtime hold
+	  turns off the status LED and enters System OFF after logging acceptance.
+	  The USB CDC console disconnects when System OFF is entered.
+
+endmenu
+
+menu "Tinycardia BLE protocol"
+
+config TINYCARDIA_BLE_ECG_QUEUE_DEPTH
+	int "Buffered ECG samples available to BLE streaming"
+	default 64
+	range 10 512
+	help
+	  Bounded producer-consumer queue between deterministic MAX30003
+	  acquisition and asynchronous BLE notification work. Queue overflow is
+	  counted in Device Status samples_dropped.
+
+config TINYCARDIA_BLE_INFERENCE_QUEUE_DEPTH
+	int "Buffered inference notifications"
+	default 4
+	range 1 32
+
+config TINYCARDIA_BLE_THREAD_STACK_SIZE
+	int "BLE protocol work-queue stack size in bytes"
+	default 2048
+	range 1024 8192
+
+config TINYCARDIA_BLE_THREAD_PRIORITY
+	int "BLE protocol work-queue priority"
+	default 6
+	range 0 15
+	help
+	  Preemptible BLE packetization/notification priority. The default is
+	  lower priority than ECG preprocessing and higher than power polling.
+
+endmenu
+
+menu "Tinycardia MAX30003"
+
+config TINYCARDIA_MAX30003_STATUS_POLL_MS
+	int "MAX30003 health and lead/contact status period (ms)"
+	default 1000
+	range 250 10000
+	help
+	  Period for reading MAX30003 STATUS while monitoring. This provides
+	  restrained lead/contact transition reporting and also detects a stalled
+	  ECG acquisition path. Device Status is notified only when lead state
+	  changes; it is not notified at this fixed rate.
+
+endmenu
+
 menu "Tinycardia ECG processing"
 
 config TINYCARDIA_ECG_THREAD_STACK_SIZE

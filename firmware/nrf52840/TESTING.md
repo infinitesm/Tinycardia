@@ -35,6 +35,11 @@ current risks directly to named test groups without inventing identifiers.
 | Shifted or stale model windows | `ecg_window` | Exact 2,560-sample ordering, completion boundary, partial window, full-buffer rejection, reset, and two non-overlapping consecutive windows |
 | Incorrect timing features | `ecg_rr` | Fixed peak indices, millisecond RR intervals, feature order and values, normalization, insufficient peaks, extreme boundary intervals, and invalid peak lists |
 | Silent preprocessing drift | `ecg_regression` | Deterministic 10-second ECG fixture with fixed R-peak indices, RR intervals, raw/standardized features, and all 2,560 standardized model-input samples |
+| Wire-format or byte-order drift | `ble_ecg_packet`, `ble_inference_packet`, `ble_status_packet` | Exact packet sizes and offsets, little-endian counters/timestamps, positive and negative signed samples, short packets, enum fields, confidence boundaries, and no structure-layout dependency |
+| Invalid MTU packet sizing | `ble_ecg_packet` | Largest unfragmented sample count at boundary ATT MTUs, including the 53-byte full-packet threshold |
+| Invalid controls or inconsistent state | `ble_control`, `ble_state` | Exact one-byte command validation, monitoring/streaming transitions, transport preconditions, STOP_STREAM independence, disconnect behavior, and STOP_MONITORING consistency |
+| Analysis stalls acquisition | `ecg_processor` | A complete second 2,560-sample window is retained while the first window's handler is deliberately blocked |
+| Stale work crosses monitoring sessions | `ecg_processor`, `ble_ecg_packet` | Queued windows are invalidated by STOP_MONITORING, restarted capture remains usable, and wrapping uptime timestamps reject earlier-session results |
 
 Compiler warnings are errors in both the test application and production firmware. Twister test
 reports and build logs are uploaded by CI, and the successful real-board build produces a UF2
@@ -52,10 +57,10 @@ this repository. Add one when an approved, versioned fixture is available; until
 the analytic regression as evidence of clinical peak-detection performance. The nRF52840 suite
 validates its own preprocessing contract and does not require STM32 implementation parity.
 
-There is also no Tinycardia GATT service, notification characteristic, or binary payload codec in
-the nRF52840 firmware yet. BLE currently advertises the standard Device Information Service, while
-the desktop GUI parses UART text. Byte-order, signed-width, packet-length, and payload-boundary
-tests cannot be added responsibly until that application protocol is defined.
+The protocol codec and state-machine tests are host-native and independent of
+the Bluetooth controller. They prove wire bytes and logical transitions, but
+they do not prove over-the-air service discovery, CCC behavior, negotiated MTU,
+or radio throughput. Those remain physical bench checks.
 
 ## Physical bench checklist
 
@@ -66,10 +71,20 @@ Keep these checks on real hardware; they are intentionally excluded from CI:
 - Verify FIFO interrupt delivery, sample ordering and rate, overflow handling, reset, and recovery.
 - Inspect live ECG values for plausible amplitude, baseline, polarity, noise, and electrode-off
   behavior.
-- Verify BLE advertising, connection, notification after a Tinycardia characteristic exists,
-  disconnect, and reconnect behavior.
-- Confirm a phone decodes the exact transmitted ECG, status, and classification bytes after the
-  payload protocol exists.
+- Verify the standard Battery Service and all four Tinycardia characteristics
+  are discoverable with the documented UUIDs and properties.
+- Negotiate ATT MTU 53 or larger and confirm 50-byte/10-sample ECG values; also
+  repeat at ATT MTU 23 and confirm valid shorter packets.
+- Subscribe, issue acknowledged start/stop controls, and confirm monitoring is
+  independent of streaming and connection lifetime.
+- Disconnect during streaming, confirm acquisition continues, reconnect, and
+  confirm advertising/subscription/control recovery.
+- Confirm a phone decodes the exact transmitted signed ECG and status bytes;
+  confirm inference bytes after the real classifier is integrated.
+- Exercise electrode disconnect/reconnect and confirm restrained Device Status
+  transition notifications with the intended physical lead labels.
+- Inject or provoke BLE backpressure where practical and confirm acquisition
+  remains alive and known loss is reflected in `samples_dropped`.
 - Verify the three-second power-button hold, System OFF entry, wake source, and restart behavior.
 - Run end-to-end acquisition, preprocessing, inference, and classification with reviewed ECG
   inputs once inference is integrated.

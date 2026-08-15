@@ -37,6 +37,23 @@ west build --sysbuild -d firmware/nrf52840/build \
 west flash -d firmware/nrf52840/build
 ```
 
+For first-board bring-up, connect to the USB CDC ACM serial port after flashing
+(typically `/dev/ttyACM0`) at 115200 baud, then hold the power button for three
+seconds. A working MAX30003 path reports the full `INFO` register and successful
+configuration readback. For example:
+
+```text
+MAX30003 connected: INFO=0x5xxxxx, revision=x
+MAX30003 register readback passed; ECG configured for 256 sps
+```
+
+An invalid `INFO` value points to the SPI/power path. A register readback
+mismatch usually narrows the fault to CSB or MOSI, while a valid identity and
+configuration with no sample lines points to INT1, the 32.768 kHz clock, or the
+ECG FIFO path. In that case, a once-per-second health warning includes `STATUS`
+and the logical INT1 level; if FIFO data is ready, it also performs one polling
+read so SPI/FIFO bring-up can continue while INT1 is being diagnosed.
+
 To force a clean configuration after changing boards or devicetree files:
 
 ```sh
@@ -47,14 +64,25 @@ west build -p always --sysbuild -d firmware/nrf52840/build \
 The starter application remains in nRF52840 System OFF until the active-low
 power button is held continuously for three seconds. A short press wakes the
 device, but it returns to System OFF when the button is released. After a valid
-hold, the application initializes the MAX30003 and starts BLE advertising.
+hold, the blue status LED turns on, the application initializes the MAX30003,
+and BLE advertising starts. The status LED is forced off before every entry to
+System OFF, so it directly indicates whether the application is ON.
+
+During hardware bring-up, `CONFIG_TINYCARDIA_POWER_BUTTON_DEBUG=y` in
+`prj.conf` logs the active-low P0.06 state transitions and accumulated hold time
+for both power-on and runtime power-off. The application and ECG acquisition
+run normally. An accepted runtime power-off hold is logged, then the status LED
+turns off and the MCU enters System OFF, disconnecting the USB console. Set the
+option to `n` only to suppress the detailed state-transition logs.
 
 ## ECG processing pipeline
 
-The MAX30003 runs at 256 samples per second. The application collects exactly
-2,560 samples into a 10-second window, pauses capture while that window is
-prepared, then discards it and starts a new window from zero. Consecutive
-windows never overlap.
+The MAX30003 runs at 256 samples per second. The application uses two
+non-overlapping 2,560-sample slots: while one completed 10-second window is
+prepared, acquisition immediately fills the other. Normal preprocessing no
+longer creates a gap in the acquired stream. If processing ever takes longer
+than the entire following 10-second window, the bounded pipeline reports the
+resulting backpressure through `samples_dropped`.
 
 Window preparation standardizes the ECG samples, detects R peaks using the same
 preprocessing as the model-training notebook, and produces these seven
@@ -69,13 +97,22 @@ standardized RR features for the future inference input:
 - Poincare SD2
 
 The inference insertion point is `prepared_window_handler()` in `src/main.c`.
-Capture remains paused until that handler returns, so inference can safely read
-the prepared arrays without them being overwritten.
+The completed slot remains owned by the processing thread until that handler
+returns, while the other slot remains dedicated to acquisition.
+
+## BLE application protocol
+
+The firmware exposes the standard Battery Service plus a fixed Tinycardia
+service for live ECG, inference results, device status, and acknowledged device
+controls. Monitoring and live streaming have separate lifetimes, and BLE work
+is queued away from MAX30003 acquisition. See [`BLE_PROTOCOL.md`](BLE_PROTOCOL.md)
+for UUIDs, exact byte layouts, MTU behavior, application APIs, and concurrency
+details.
 
 ## Verification
 
-See [`TESTING.md`](TESTING.md) for native ztest/Twister commands, automated coverage,
-golden-data limits, CI behavior, and the physical bench checklist.
+See [`TESTING.md`](TESTING.md) for native ztest/Twister commands, automated
+coverage, golden-data limits, CI behavior, and the physical bench checklist.
 
 ## Hardware mapping
 

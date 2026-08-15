@@ -36,6 +36,7 @@ struct ecg_prepared_window {
 	size_t sample_count;
 	size_t r_peak_count;
 	bool rr_features_valid;
+	uint32_t end_timestamp_ms;
 };
 
 typedef void (*ecg_window_handler_t)(const struct ecg_prepared_window *window, void *user_data);
@@ -43,13 +44,24 @@ typedef void (*ecg_window_handler_t)(const struct ecg_prepared_window *window, v
 /**
  * Initialize the ECG window processor.
  *
- * The window handler runs on the ECG processing thread. Capture remains paused
- * until the handler returns, which prevents overlap between consecutive
- * windows and leaves a safe insertion point for future inference.
+ * The window handler runs on the ECG processing thread and owns its completed
+ * slot until it returns. Acquisition concurrently fills the second slot, so
+ * normal preprocessing does not create a sampling gap.
  */
 int ecg_processor_init(ecg_window_handler_t window_handler, void *user_data);
 
-/** MAX30003 sample callback; pass this directly to max30003_init(). */
+/** Start or stop normal 10-second window capture and preprocessing. */
+int ecg_processor_set_monitoring(bool enabled);
+
+/**
+ * Submit one acquired sample with its acquisition timestamp.
+ *
+ * Returns true when the analysis path preserved the sample and false when
+ * monitoring was stopped or both bounded window slots were occupied.
+ */
+bool ecg_processor_submit_sample(uint32_t raw_word, uint32_t timestamp_ms);
+
+/** Compatibility callback using current uptime as the sample timestamp. */
 void ecg_processor_sample_handler(uint32_t raw_word, void *user_data);
 
 #endif /* TINYCARDIA_ECG_PROCESSOR_H_ */

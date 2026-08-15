@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT
+
+mainmenu "Tinycardia ECG processor tests"
+
+config TINYCARDIA_ECG_THREAD_STACK_SIZE
+	int
+	default 4096
+
+config TINYCARDIA_ECG_THREAD_PRIORITY
+	int
+	default 5
+
+source "Kconfig.zephyr"
