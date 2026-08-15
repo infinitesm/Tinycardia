@@ -31,7 +31,7 @@ jobs:
           submodules: recursive
 
       - name: Install build dependencies
-        run: apt-get update && apt-get install -y make
+        run: apt-get update && apt-get install -y make g++
 
       - name: Initialize nRF Connect SDK
         run: west init -m https://github.com/nrfconnect/sdk-nrf --mr "${NCS_VERSION}" ncs
