@@ -22,6 +22,10 @@ static void prepared_window_handler(const struct ecg_prepared_window *window,
 	if (window->sample_count != ECG_PROCESSOR_WINDOW_SIZE) {
 		atomic_set(&handler_error, 1);
 	}
+	if ((uint32_t)(window->end_timestamp_ms - window->start_timestamp_ms) !=
+	    ECG_PROCESSOR_WINDOW_SIZE - 1U) {
+		atomic_set(&handler_error, 1);
+	}
 	if (atomic_cas(&block_next_handler, 1, 0)) {
 		k_sem_give(&handler_entered);
 		if (k_sem_take(&handler_release, K_SECONDS(2)) < 0) {

@@ -1,0 +1,7 @@
+mainmenu "Tinycardia model inference tests"
+
+config TINYCARDIA_MODEL_TENSOR_ARENA_SIZE
+	int
+	default 98304
+
+source "Kconfig.zephyr"

@@ -9,6 +9,7 @@ legacy STM32 firmware in `../stm32`.
 - nRF Connect SDK v3.4.0 installed and activated
 - A Pro Micro nRF52840-compatible board using the UF2 bootloader
 - `west` available in the activated SDK environment
+- Repository submodules initialized with `git submodule update --init --recursive`
 
 ## VS Code setup
 
@@ -86,7 +87,7 @@ resulting backpressure through `samples_dropped`.
 
 Window preparation standardizes the ECG samples, detects R peaks using the same
 preprocessing as the model-training notebook, and produces these seven
-standardized RR features for the future inference input:
+standardized RR features for model inference:
 
 - mean RR interval
 - SDNN
@@ -96,9 +97,26 @@ standardized RR features for the future inference input:
 - Poincare SD1
 - Poincare SD2
 
-The inference insertion point is `prepared_window_handler()` in `src/main.c`.
-The completed slot remains owned by the processing thread until that handler
-returns, while the other slot remains dedicated to acquisition.
+The completed window is quantized and evaluated by the canonical
+`model/afib_detector_int8.tflite` artifact in `prepared_window_handler()`.
+Inference runs synchronously on the ECG processing thread, never in an ISR,
+while the other slot remains dedicated to acquisition. The two TFLM inputs are
+the standardized ECG `[1, 2560, 1]` and standardized RR features `[1, 7]`.
+
+The model is embedded in flash at build time and executed from a static tensor
+arena. Configuration rejects any artifact whose SHA-256 differs from the
+canonical deployment hash. Initialization also rejects changes to the artifact
+size, schema, 21-node operator graph, tensor names/order, shapes, INT8 types, or
+quantization parameters. The resolver registers only EXPAND_DIMS, CONV_2D, RESHAPE,
+MAX_POOL_2D, MEAN, FULLY_CONNECTED, CONCATENATION, and SOFTMAX. The nRF52840
+build enables the Zephyr CMSIS-NN TFLM kernels.
+
+AFIB is notebook label index 0 and NORMAL is index 1, based on the notebook's
+`LabelEncoder` class ordering. The selected softmax probability is encoded as
+BLE confidence in the range 0..10000. A window is not classified unless its RR
+features are valid and lead/contact quality remained good for the complete
+window. Inference and its counter continue when the phone is disconnected,
+unsubscribed, or ECG streaming is disabled; BLE notification is opportunistic.
 
 ## BLE application protocol
 

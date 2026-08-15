@@ -16,6 +16,7 @@ LOG_MODULE_REGISTER(ecg_processor, CONFIG_LOG_DEFAULT_LEVEL);
 
 struct ecg_window_slot {
 	struct ecg_sample_window samples;
+	uint32_t start_timestamp_ms;
 	uint32_t end_timestamp_ms;
 	uint32_t monitoring_generation;
 	bool queued;
@@ -42,6 +43,7 @@ static void reset_slot(uint8_t slot_index)
 	struct ecg_window_slot *slot = &window_slots[slot_index];
 
 	ecg_sample_window_reset(&slot->samples);
+	slot->start_timestamp_ms = 0U;
 	slot->end_timestamp_ms = 0U;
 	slot->monitoring_generation = 0U;
 	slot->queued = false;
@@ -62,10 +64,14 @@ static int find_available_slot(void)
 static int prepare_window(struct ecg_window_slot *slot,
 			  struct ecg_prepared_window *window)
 {
+	uint32_t start_cycles;
 	int err;
 
+	start_cycles = k_cycle_get_32();
 	err = ecg_prepare_model_inputs(&slot->samples, &processing_workspace,
 				       &processing_result);
+	window->preparation_time_us = (uint32_t)k_cyc_to_us_floor64(
+		(uint32_t)(k_cycle_get_32() - start_cycles));
 	if (err < 0) {
 		return err;
 	}
@@ -76,6 +82,7 @@ static int prepare_window(struct ecg_window_slot *slot,
 	window->sample_count = slot->samples.count;
 	window->r_peak_count = processing_result.r_peak_count;
 	window->rr_features_valid = processing_result.rr.features_valid;
+	window->start_timestamp_ms = slot->start_timestamp_ms;
 	window->end_timestamp_ms = slot->end_timestamp_ms;
 
 	return 0;
@@ -233,6 +240,9 @@ bool ecg_processor_submit_sample(uint32_t raw_word, uint32_t timestamp_ms)
 
 	completed_slot = (uint8_t)capture_slot;
 	slot = &window_slots[completed_slot];
+	if (slot->samples.count == 0U) {
+		slot->start_timestamp_ms = timestamp_ms;
+	}
 	append_result = ecg_sample_window_append(&slot->samples, sample_mv);
 	if (append_result == ECG_WINDOW_COMPLETED) {
 		int next_slot;

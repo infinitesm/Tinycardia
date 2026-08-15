@@ -3,7 +3,9 @@
 #include "ble_service.h"
 #include "ecg_processing.h"
 #include "ecg_processor.h"
+#include "inference_policy.h"
 #include "max30003.h"
+#include "model_inference.h"
 #include "power_control.h"
 
 #include <zephyr/kernel.h>
@@ -13,9 +15,42 @@
 
 LOG_MODULE_REGISTER(tinycardia, CONFIG_LOG_DEFAULT_LEVEL);
 
+struct signal_quality_state {
+	enum tinycardia_signal_quality current;
+	uint64_t good_since_ms;
+};
+
+static struct k_spinlock signal_quality_lock;
+static struct signal_quality_state signal_quality = {
+	.current = TINYCARDIA_SIGNAL_QUALITY_UNKNOWN,
+};
+
+static void update_signal_quality(enum tinycardia_signal_quality quality)
+{
+	uint64_t now_ms = (uint64_t)k_uptime_get();
+	k_spinlock_key_t key = k_spin_lock(&signal_quality_lock);
+
+	if (quality == TINYCARDIA_SIGNAL_QUALITY_GOOD &&
+	    signal_quality.current != TINYCARDIA_SIGNAL_QUALITY_GOOD) {
+		signal_quality.good_since_ms = now_ms;
+	}
+	signal_quality.current = quality;
+	k_spin_unlock(&signal_quality_lock, key);
+}
+
 static void prepared_window_handler(const struct ecg_prepared_window *window,
 				    void *user_data)
 {
+	struct tinycardia_model_result result;
+	struct signal_quality_state quality;
+	k_spinlock_key_t quality_key;
+	uint64_t now_ms;
+	uint64_t window_start_ms;
+	int32_t window_start_offset_ms;
+	uint32_t model_start_cycles;
+	uint32_t model_time_us;
+	int err;
+
 	ARG_UNUSED(user_data);
 
 	LOG_INF("ECG window prepared: %u samples, %u R peaks, RR features %s",
@@ -23,11 +58,49 @@ static void prepared_window_handler(const struct ecg_prepared_window *window,
 		(unsigned int)window->r_peak_count,
 		window->rr_features_valid ? "ready" : "insufficient R peaks");
 
-	/*
-	 * Future inference consumes the prepared inputs here, then calls
-	 * tinycardia_ble_inference_publish() with window->end_timestamp_ms.
-	 * No placeholder classification is emitted.
-	 */
+	quality_key = k_spin_lock(&signal_quality_lock);
+	quality = signal_quality;
+	k_spin_unlock(&signal_quality_lock, quality_key);
+	now_ms = (uint64_t)k_uptime_get();
+	window_start_offset_ms = (int32_t)(window->start_timestamp_ms -
+		(uint32_t)now_ms);
+	window_start_ms = (uint64_t)((int64_t)now_ms +
+		(int64_t)window_start_offset_ms);
+	if (!tinycardia_inference_window_is_eligible(
+		window->rr_features_valid, quality.current,
+		window_start_ms, quality.good_since_ms)) {
+		LOG_WRN("Inference skipped: RR valid %u, signal quality %u",
+			(unsigned int)window->rr_features_valid,
+			(unsigned int)quality.current);
+		return;
+	}
+
+	model_start_cycles = k_cycle_get_32();
+	err = tinycardia_model_infer(window->ecg_samples, window->sample_count,
+				     window->rr_features,
+				     ECG_PROCESSOR_RR_FEATURE_COUNT, &result);
+	if (err < 0) {
+		LOG_ERR("AFib inference failed: %d", err);
+		tinycardia_ble_status_set_error(true);
+		return;
+	}
+	model_time_us = (uint32_t)k_cyc_to_us_floor64(
+		(uint32_t)(k_cycle_get_32() - model_start_cycles));
+
+	err = tinycardia_ble_inference_publish(
+		window->end_timestamp_ms, result.classification,
+		TINYCARDIA_SIGNAL_QUALITY_GOOD, result.confidence);
+	if (err < 0) {
+		LOG_ERR("BLE inference publication failed: %d", err);
+		return;
+	}
+
+	LOG_INF("Inference accepted: class %u, confidence %u, prep %u us, invoke %u us, total %u us",
+		(unsigned int)result.classification,
+		(unsigned int)result.confidence,
+		(unsigned int)window->preparation_time_us,
+		(unsigned int)result.invoke_time_us,
+		(unsigned int)(window->preparation_time_us + model_time_us));
 }
 
 static void live_ecg_sample_handler(uint32_t raw_word, uint32_t timestamp_ms,
@@ -50,21 +123,26 @@ static void lead_status_handler(enum max30003_lead_status status, void *user_dat
 	switch (status) {
 	case MAX30003_LEAD_STATUS_GOOD:
 		protocol_status = TINYCARDIA_LEAD_STATUS_GOOD;
+		update_signal_quality(TINYCARDIA_SIGNAL_QUALITY_GOOD);
 		break;
 	case MAX30003_LEAD_STATUS_NEGATIVE_OFF:
 		/* MAX30003 ECGN is protocol lead/contact 1. */
 		protocol_status = TINYCARDIA_LEAD_STATUS_LEAD_1_OFF;
+		update_signal_quality(TINYCARDIA_SIGNAL_QUALITY_LEAD_OFF);
 		break;
 	case MAX30003_LEAD_STATUS_POSITIVE_OFF:
 		/* MAX30003 ECGP is protocol lead/contact 2. */
 		protocol_status = TINYCARDIA_LEAD_STATUS_LEAD_2_OFF;
+		update_signal_quality(TINYCARDIA_SIGNAL_QUALITY_LEAD_OFF);
 		break;
 	case MAX30003_LEAD_STATUS_BOTH_OFF:
 		protocol_status = TINYCARDIA_LEAD_STATUS_BOTH_OFF;
+		update_signal_quality(TINYCARDIA_SIGNAL_QUALITY_LEAD_OFF);
 		break;
 	case MAX30003_LEAD_STATUS_UNKNOWN:
 	default:
 		protocol_status = TINYCARDIA_LEAD_STATUS_UNKNOWN;
+		update_signal_quality(TINYCARDIA_SIGNAL_QUALITY_UNKNOWN);
 		break;
 	}
 
@@ -91,6 +169,7 @@ static int set_monitoring(bool enabled, void *user_data)
 		}
 		err = ecg_processor_set_monitoring(false);
 		if (err == 0) {
+			update_signal_quality(TINYCARDIA_SIGNAL_QUALITY_UNKNOWN);
 			(void)tinycardia_ble_status_set_lead(
 				TINYCARDIA_LEAD_STATUS_UNKNOWN);
 		}
@@ -98,6 +177,7 @@ static int set_monitoring(bool enabled, void *user_data)
 	}
 
 	(void)tinycardia_ble_status_set_lead(TINYCARDIA_LEAD_STATUS_CHECKING);
+	update_signal_quality(TINYCARDIA_SIGNAL_QUALITY_UNKNOWN);
 	err = ecg_processor_set_monitoring(true);
 	if (err < 0) {
 		return err;
@@ -131,6 +211,13 @@ int main(void)
 	err = power_control_start_off_monitor();
 	if (err < 0) {
 		printk("Runtime power-button monitor initialization failed (err %d)\n", err);
+		return 0;
+	}
+
+	update_signal_quality(TINYCARDIA_SIGNAL_QUALITY_UNKNOWN);
+	err = tinycardia_model_init();
+	if (err < 0) {
+		printk("AFib model initialization failed (err %d)\n", err);
 		return 0;
 	}
 

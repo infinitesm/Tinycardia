@@ -65,7 +65,7 @@ menu "Tinycardia ECG processing"
 
 config TINYCARDIA_ECG_THREAD_STACK_SIZE
 	int "ECG processing thread stack size in bytes"
-	default 2048
+	default 4096
 	range 1024 8192
 	help
 	  Stack reserved for window standardization, R-peak detection, RR feature
@@ -77,6 +77,19 @@ config TINYCARDIA_ECG_THREAD_PRIORITY
 	range 0 15
 	help
 	  Preemptible Zephyr thread priority used for completed ECG windows.
+
+endmenu
+
+menu "Tinycardia AFib inference"
+
+config TINYCARDIA_MODEL_TENSOR_ARENA_SIZE
+	int "TFLite Micro tensor arena size in bytes"
+	default 98304
+	range 65536 163840
+	help
+	  Static memory reserved for TFLite Micro tensors, persistent operator
+	  data, and CMSIS-NN scratch buffers. Keep this value close to the
+	  measured arena usage while retaining a small compatibility margin.
 
 endmenu
 
