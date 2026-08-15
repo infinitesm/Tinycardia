@@ -1,6 +1,8 @@
 # Zephyr / west build output
 build/
 firmware/nrf52840/build/
+firmware/nrf52840/build-ci/
+firmware/nrf52840/twister-out*/
 
 # Python tooling
 __pycache__/
