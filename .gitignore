@@ -8,3 +8,9 @@ firmware/nrf52840/twister-out*/
 __pycache__/
 *.py[cod]
 .venv/
+
+# macOS / Xcode user-specific files
+.DS_Store
+xcuserdata/
+*.xcuserstate
+DerivedData/
